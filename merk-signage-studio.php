@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Merk Signage Studio
  * Description: Isolated, builder-free signage editor for the TEST_ADMINA page.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Seehank
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'MERK_SIGNAGE_STUDIO_FILE', __FILE__ );
 define( 'MERK_SIGNAGE_STUDIO_URL', plugin_dir_url( __FILE__ ) );
-define( 'MERK_SIGNAGE_STUDIO_VERSION', '0.1.0' );
+define( 'MERK_SIGNAGE_STUDIO_VERSION', '0.1.1' );
 
 final class Merk_Signage_Studio {
 	const TEST_PAGE_ID = 82477;
@@ -37,11 +37,11 @@ final class Merk_Signage_Studio {
 	/**
 	 * Add settings only to the isolated test page.
 	 *
-	 * @param WP_Post_Type $post_type Post type object.
+ * @param string       $post_type Post type name.
 	 * @param WP_Post      $post      Current post.
 	 */
 	public function add_metabox( $post_type, $post ) {
-		if ( 'page' !== $post_type->name || self::TEST_PAGE_ID !== (int) $post->ID ) {
+		if ( 'page' !== $post_type || ! ( $post instanceof WP_Post ) || self::TEST_PAGE_ID !== (int) $post->ID || ! current_user_can( 'edit_post', $post->ID ) ) {
 			return;
 		}
 
@@ -61,6 +61,10 @@ final class Merk_Signage_Studio {
 	 * @param WP_Post $post Current post.
 	 */
 	public function render_metabox( $post ) {
+		if ( ! ( $post instanceof WP_Post ) || self::TEST_PAGE_ID !== (int) $post->ID || ! current_user_can( 'edit_post', $post->ID ) ) {
+			return;
+		}
+		$can_manage = current_user_can( 'manage_options' );
 		$config = get_post_meta( $post->ID, self::META_KEY, true );
 		$config = is_array( $config ) ? $config : array();
 		$layers = isset( $config['layers'] ) && is_array( $config['layers'] ) ? $config['layers'] : array();
@@ -68,6 +72,7 @@ final class Merk_Signage_Studio {
 		wp_nonce_field( 'merk_signage_studio_save', 'merk_signage_studio_nonce' );
 		?>
 		<div class="merk-signage-studio-metabox">
+			<?php if ( $can_manage ) : ?>
 			<p>
 				<label for="merk-signage-background-url"><strong><?php esc_html_e( 'Background image URL', 'merk-signage-studio' ); ?></strong></label><br>
 				<input class="widefat" id="merk-signage-background-url" name="merk_signage[background_url]" type="url" value="<?php echo esc_attr( isset( $config['background_url'] ) ? $config['background_url'] : '' ); ?>" placeholder="https://…">
@@ -78,12 +83,17 @@ final class Merk_Signage_Studio {
 				<p class="description"><?php esc_html_e( 'Drag a text layer directly in the preview. Its X and Y coordinates are updated automatically.', 'merk-signage-studio' ); ?></p>
 				<div class="merk-signage-preview-viewport"><div id="merk-signage-canvas"></div></div>
 			</div>
+			<?php else : ?>
+				<p><?php esc_html_e( 'Edit the content below. The background and layout are managed by an administrator.', 'merk-signage-studio' ); ?></p>
+			<?php endif; ?>
 			<div id="merk-signage-layers" data-next-index="<?php echo esc_attr( count( $layers ) ); ?>">
 				<?php foreach ( $layers as $index => $layer ) : ?>
 					<?php $this->render_layer_row( (int) $index, $layer ); ?>
 				<?php endforeach; ?>
 			</div>
-			<p><button class="button" id="merk-signage-add-layer" type="button"><?php esc_html_e( 'Add text layer', 'merk-signage-studio' ); ?></button></p>
+			<?php if ( $can_manage ) : ?>
+				<p><button class="button" id="merk-signage-add-layer" type="button"><?php esc_html_e( 'Add text layer', 'merk-signage-studio' ); ?></button></p>
+			<?php endif; ?>
 		</div>
 		<?php
 	}
@@ -110,6 +120,16 @@ final class Merk_Signage_Studio {
 			)
 		);
 		$name = 'merk_signage[layers][' . $index . ']';
+		if ( ! current_user_can( 'manage_options' ) ) {
+			?>
+			<div class="merk-operator-layer">
+				<label><strong><?php echo esc_html( $layer['label'] ); ?></strong><br>
+					<textarea class="widefat" name="<?php echo esc_attr( $name ); ?>[text]" rows="3"><?php echo esc_textarea( $layer['text'] ); ?></textarea>
+				</label>
+			</div>
+			<?php
+			return;
+		}
 		?>
 		<fieldset class="merk-signage-layer-row" data-layer-key="<?php echo esc_attr( $index ); ?>">
 			<legend><?php esc_html_e( 'Text layer', 'merk-signage-studio' ); ?></legend>
@@ -149,22 +169,94 @@ final class Merk_Signage_Studio {
 	 * @param bool     $update  Whether this is an update.
 	 */
 	public function save_page( $post_id, $post, $update ) {
-		unset( $update );
-
+		if ( ! ( $post instanceof WP_Post ) ) {
+			return;
+		}
 		if ( self::TEST_PAGE_ID !== (int) $post_id || wp_is_post_autosave( $post_id ) || wp_is_post_revision( $post_id ) ) {
 			return;
 		}
-
-		if ( ! isset( $_POST['merk_signage_studio_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['merk_signage_studio_nonce'] ) ), 'merk_signage_studio_save' ) ) {
+		if ( ! isset( $_POST['merk_signage_studio_nonce'] ) || ! is_string( $_POST['merk_signage_studio_nonce'] ) ) {
 			return;
 		}
-
+		if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['merk_signage_studio_nonce'] ) ), 'merk_signage_studio_save' ) ) {
+			return;
+		}
 		if ( ! current_user_can( 'edit_post', $post_id ) || 'page' !== $post->post_type ) {
 			return;
 		}
+		if ( ! isset( $_POST['merk_signage'] ) || ! is_array( $_POST['merk_signage'] ) ) {
+			return;
+		}
+		$raw_config = wp_unslash( $_POST['merk_signage'] );
+		if ( current_user_can( 'manage_options' ) ) {
+			if ( ! $this->valid_config_input( $raw_config ) ) {
+				return;
+			}
+			update_post_meta( $post_id, self::META_KEY, $this->sanitize_config( $raw_config ) );
+			return;
+		}
+		$existing = get_post_meta( $post_id, self::META_KEY, true );
+		if ( empty( $existing ) || ! is_array( $existing ) ) {
+			return;
+		}
+		$existing_layers  = isset( $existing['layers'] ) && is_array( $existing['layers'] ) ? $existing['layers'] : array();
+		$submitted_layers = isset( $raw_config['layers'] ) && is_array( $raw_config['layers'] ) ? $raw_config['layers'] : array();
+		if ( count( $existing_layers ) !== count( $submitted_layers ) ) {
+			return;
+		}
+		$count         = count( $existing_layers );
+		$expected_keys = $count ? range( 0, $count - 1 ) : array();
+		if ( array_keys( $existing_layers ) !== $expected_keys || array_keys( $submitted_layers ) !== $expected_keys ) {
+			return;
+		}
+		if ( ! isset( $raw_config['layers'] ) || ! is_array( $raw_config['layers'] ) ) {
+			return;
+		}
+		$updated_existing = $existing;
+		foreach ( $existing_layers as $index => $layer ) {
+			if ( ! is_array( $layer ) || ! isset( $submitted_layers[ $index ] ) || ! is_array( $submitted_layers[ $index ] ) ) {
+				return;
+			}
+			$submitted_layer = $submitted_layers[ $index ];
+			if ( ! isset( $submitted_layer['text'] ) || ! is_string( $submitted_layer['text'] ) || strlen( $submitted_layer['text'] ) > 8000 ) {
+				return;
+			}
+			$updated_existing['layers'][ $index ]['text'] = sanitize_textarea_field( $submitted_layer['text'] );
+		}
+		update_post_meta( $post_id, self::META_KEY, $updated_existing );
+	}
 
-		$raw_config = isset( $_POST['merk_signage'] ) && is_array( $_POST['merk_signage'] ) ? wp_unslash( $_POST['merk_signage'] ) : array();
-		update_post_meta( $post_id, self::META_KEY, $this->sanitize_config( $raw_config ) );
+	/**
+	 * Validate the complete admin form before calling scalar sanitizers.
+	 *
+	 * @param mixed $raw Submitted configuration.
+	 * @return bool
+	 */
+	private function valid_config_input( $raw ) {
+		if ( ! is_array( $raw ) || ! isset( $raw['background_url'] ) || ! is_string( $raw['background_url'] ) || strlen( $raw['background_url'] ) > 2048 ) {
+			return false;
+		}
+		if ( ! isset( $raw['layers'] ) || ! is_array( $raw['layers'] ) || count( $raw['layers'] ) > 100 ) {
+			return false;
+		}
+		$string_fields  = array( 'label', 'text', 'color', 'align' );
+		$numeric_fields = array( 'x', 'y', 'width', 'font_size', 'font_weight' );
+		foreach ( $raw['layers'] as $layer ) {
+			if ( ! is_array( $layer ) ) {
+				return false;
+			}
+			foreach ( $string_fields as $field ) {
+				if ( ! isset( $layer[ $field ] ) || ! is_string( $layer[ $field ] ) || strlen( $layer[ $field ] ) > ( 'text' === $field ? 8000 : 255 ) ) {
+					return false;
+				}
+			}
+			foreach ( $numeric_fields as $field ) {
+				if ( ! isset( $layer[ $field ] ) || ! is_scalar( $layer[ $field ] ) || ! is_numeric( $layer[ $field ] ) ) {
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -217,7 +309,11 @@ final class Merk_Signage_Studio {
 	 * @param string $hook_suffix Admin page hook.
 	 */
 	public function enqueue_admin_assets( $hook_suffix ) {
-		if ( ! in_array( $hook_suffix, array( 'post.php', 'post-new.php' ), true ) || ! isset( $_GET['post'] ) || self::TEST_PAGE_ID !== absint( $_GET['post'] ) ) {
+		if ( 'post.php' !== $hook_suffix || ! isset( $_GET['post'] ) || ! is_scalar( $_GET['post'] ) || self::TEST_PAGE_ID !== absint( $_GET['post'] ) || ! current_user_can( 'edit_post', self::TEST_PAGE_ID ) ) {
+			return;
+		}
+		wp_enqueue_style( 'merk-signage-studio-admin', MERK_SIGNAGE_STUDIO_URL . 'assets/signage.css', array(), MERK_SIGNAGE_STUDIO_VERSION );
+		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
 
