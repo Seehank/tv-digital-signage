@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Merk Signage Studio
- * Description: Isolated, builder-free signage editor for the TEST_ADMINA page.
- * Version: 0.1.1
+ * Description: Builder-free editor for selected digital-signage pages.
+ * Version: 0.2.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Seehank
@@ -16,11 +16,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'MERK_SIGNAGE_STUDIO_FILE', __FILE__ );
 define( 'MERK_SIGNAGE_STUDIO_URL', plugin_dir_url( __FILE__ ) );
-define( 'MERK_SIGNAGE_STUDIO_VERSION', '0.1.1' );
+define( 'MERK_SIGNAGE_STUDIO_VERSION', '0.2.0' );
 
 final class Merk_Signage_Studio {
 	const TEST_PAGE_ID = 82477;
 	const META_KEY     = '_merk_signage_studio';
+	const OPTION_KEY   = 'merk_signage_studio_pages';
 
 	/**
 	 * Register hooks.
@@ -32,22 +33,99 @@ final class Merk_Signage_Studio {
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_frontend_assets' ) );
 		add_filter( 'the_content', array( $this, 'render_signage' ), 100 );
 		add_action( 'admin_menu', array( $this, 'add_studio_menu' ) );
+		add_action( 'admin_init', array( $this, 'register_settings' ) );
+		add_filter( 'body_class', array( $this, 'add_signage_body_class' ) );
 	}
 
 	/**
-	 * Add settings only to the isolated test page.
+	 * Return valid signage page IDs. A fresh install starts with TEST_ADMINA.
 	 *
- * @param string       $post_type Post type name.
+	 * @return int[]
+	 */
+	private function get_managed_page_ids() {
+		$page_ids = get_option( self::OPTION_KEY, array( self::TEST_PAGE_ID ) );
+		if ( ! is_array( $page_ids ) ) {
+			return array();
+		}
+
+		$valid_ids = array();
+		foreach ( $page_ids as $page_id ) {
+			$page_id = absint( $page_id );
+			if ( $page_id && 'page' === get_post_type( $page_id ) && 'trash' !== get_post_status( $page_id ) ) {
+				$valid_ids[] = $page_id;
+			}
+		}
+
+		return array_values( array_unique( $valid_ids ) );
+	}
+
+	/**
+	 * Check whether the plugin is enabled for a page.
+	 *
+	 * @param int $page_id Page ID.
+	 * @return bool
+	 */
+	private function is_managed_page( $page_id ) {
+		return in_array( (int) $page_id, $this->get_managed_page_ids(), true );
+	}
+
+	/**
+	 * Register the administrator-only managed pages setting.
+	 */
+	public function register_settings() {
+		register_setting(
+			'merk_signage_studio_settings',
+			self::OPTION_KEY,
+			array( 'sanitize_callback' => array( $this, 'sanitize_managed_pages' ) )
+		);
+	}
+
+	/**
+	 * Accept only existing WordPress pages in the signage list.
+	 *
+	 * @param mixed $submitted Submitted page IDs.
+	 * @return int[]
+	 */
+	public function sanitize_managed_pages( $submitted ) {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return $this->get_managed_page_ids();
+		}
+		// The hidden empty value lets an administrator intentionally deselect every page.
+		if ( '' === $submitted ) {
+			$submitted = array();
+		}
+		if ( ! is_array( $submitted ) ) {
+			return $this->get_managed_page_ids();
+		}
+
+		$page_ids = array();
+		foreach ( $submitted as $value ) {
+			if ( ! is_scalar( $value ) ) {
+				continue;
+			}
+			$page_id = absint( $value );
+			if ( $page_id && 'page' === get_post_type( $page_id ) && 'trash' !== get_post_status( $page_id ) ) {
+				$page_ids[] = $page_id;
+			}
+		}
+
+		return array_values( array_unique( $page_ids ) );
+	}
+
+	/**
+	 * Add settings only to pages selected for this plugin.
+	 *
+	 * @param string       $post_type Post type name.
 	 * @param WP_Post      $post      Current post.
 	 */
 	public function add_metabox( $post_type, $post ) {
-		if ( 'page' !== $post_type || ! ( $post instanceof WP_Post ) || self::TEST_PAGE_ID !== (int) $post->ID || ! current_user_can( 'edit_post', $post->ID ) ) {
+		if ( 'page' !== $post_type || ! ( $post instanceof WP_Post ) || ! $this->is_managed_page( $post->ID ) || ! current_user_can( 'edit_post', $post->ID ) ) {
 			return;
 		}
 
 		add_meta_box(
 			'merk-signage-studio',
-			__( 'Signage Studio (test)', 'merk-signage-studio' ),
+			__( 'Signage Studio', 'merk-signage-studio' ),
 			array( $this, 'render_metabox' ),
 			'page',
 			'normal',
@@ -61,7 +139,7 @@ final class Merk_Signage_Studio {
 	 * @param WP_Post $post Current post.
 	 */
 	public function render_metabox( $post ) {
-		if ( ! ( $post instanceof WP_Post ) || self::TEST_PAGE_ID !== (int) $post->ID || ! current_user_can( 'edit_post', $post->ID ) ) {
+		if ( ! ( $post instanceof WP_Post ) || ! $this->is_managed_page( $post->ID ) || ! current_user_can( 'edit_post', $post->ID ) ) {
 			return;
 		}
 		$can_manage = current_user_can( 'manage_options' );
@@ -77,7 +155,7 @@ final class Merk_Signage_Studio {
 				<label for="merk-signage-background-url"><strong><?php esc_html_e( 'Background image URL', 'merk-signage-studio' ); ?></strong></label><br>
 				<input class="widefat" id="merk-signage-background-url" name="merk_signage[background_url]" type="url" value="<?php echo esc_attr( isset( $config['background_url'] ) ? $config['background_url'] : '' ); ?>" placeholder="https://…">
 			</p>
-			<p class="description"><?php esc_html_e( 'Coordinates use the fixed 1920 × 1080 design canvas. This editor applies only to TEST_ADMINA.', 'merk-signage-studio' ); ?></p>
+			<p class="description"><?php esc_html_e( 'Coordinates use the fixed 1920 × 1080 design canvas. Manage which pages use this editor in Signage Settings.', 'merk-signage-studio' ); ?></p>
 			<div class="merk-signage-layout-preview">
 				<h3><?php esc_html_e( 'Visual layout', 'merk-signage-studio' ); ?></h3>
 				<p class="description"><?php esc_html_e( 'Drag a text layer directly in the preview. Its X and Y coordinates are updated automatically.', 'merk-signage-studio' ); ?></p>
@@ -172,7 +250,7 @@ final class Merk_Signage_Studio {
 		if ( ! ( $post instanceof WP_Post ) ) {
 			return;
 		}
-		if ( self::TEST_PAGE_ID !== (int) $post_id || wp_is_post_autosave( $post_id ) || wp_is_post_revision( $post_id ) ) {
+		if ( ! $this->is_managed_page( $post_id ) || wp_is_post_autosave( $post_id ) || wp_is_post_revision( $post_id ) ) {
 			return;
 		}
 		if ( ! isset( $_POST['merk_signage_studio_nonce'] ) || ! is_string( $_POST['merk_signage_studio_nonce'] ) ) {
@@ -304,12 +382,16 @@ final class Merk_Signage_Studio {
 	}
 
 	/**
-	 * Load the repeatable-fields script only in the test editor.
+	 * Load editor assets only when editing a selected signage page.
 	 *
 	 * @param string $hook_suffix Admin page hook.
 	 */
 	public function enqueue_admin_assets( $hook_suffix ) {
-		if ( 'post.php' !== $hook_suffix || ! isset( $_GET['post'] ) || ! is_scalar( $_GET['post'] ) || self::TEST_PAGE_ID !== absint( $_GET['post'] ) || ! current_user_can( 'edit_post', self::TEST_PAGE_ID ) ) {
+		if ( 'post.php' !== $hook_suffix || ! isset( $_GET['post'] ) || ! is_scalar( $_GET['post'] ) ) {
+			return;
+		}
+		$page_id = absint( $_GET['post'] );
+		if ( ! $this->is_managed_page( $page_id ) || ! current_user_can( 'edit_post', $page_id ) ) {
 			return;
 		}
 		wp_enqueue_style( 'merk-signage-studio-admin', MERK_SIGNAGE_STUDIO_URL . 'assets/signage.css', array(), MERK_SIGNAGE_STUDIO_VERSION );
@@ -339,32 +421,32 @@ final class Merk_Signage_Studio {
 	}
 
 	/**
-	 * Load front-end styles only for TEST_ADMINA.
+	 * Load front-end styles only on selected signage pages.
 	 */
 	public function enqueue_frontend_assets() {
-		if ( is_page( self::TEST_PAGE_ID ) ) {
+		if ( is_page( $this->get_managed_page_ids() ) ) {
 			wp_enqueue_style( 'merk-signage-studio', MERK_SIGNAGE_STUDIO_URL . 'assets/signage.css', array(), MERK_SIGNAGE_STUDIO_VERSION );
 		}
 	}
 
 	/**
-	 * Replace Brizy output only on the test page.
+	 * Replace Brizy output only on pages selected for the plugin.
 	 *
 	 * @param string $content Original content.
 	 * @return string
 	 */
 	public function render_signage( $content ) {
-		if ( ! is_page( self::TEST_PAGE_ID ) || ! is_main_query() || ! in_the_loop() ) {
+		$page_id = get_queried_object_id();
+		if ( ! $this->is_managed_page( $page_id ) || ! is_main_query() || ! in_the_loop() ) {
 			return $content;
 		}
 
-		$config = get_post_meta( self::TEST_PAGE_ID, self::META_KEY, true );
+		$config = get_post_meta( $page_id, self::META_KEY, true );
 		$config = is_array( $config ) ? $config : array();
 		$background_url = isset( $config['background_url'] ) ? esc_url( $config['background_url'] ) : '';
 		$layers         = isset( $config['layers'] ) && is_array( $config['layers'] ) ? $config['layers'] : array();
 
-		// Activating the plugin must not change the copied Brizy test page until
-		// an editor deliberately supplies a new signage background.
+		// A page keeps rendering its original content until its signage layout is configured.
 		if ( '' === $background_url ) {
 			return $content;
 		}
@@ -407,33 +489,111 @@ final class Merk_Signage_Studio {
 	}
 
 	/**
-	 * Add the entry point only to users allowed to edit this test page.
+	 * Add studio and settings entry points for the appropriate users.
 	 */
 	public function add_studio_menu() {
-		if ( ! current_user_can( 'edit_post', self::TEST_PAGE_ID ) ) {
-			return;
-		}
-
 		add_submenu_page(
 			'edit.php?post_type=page',
 			__( 'Signage Studio', 'merk-signage-studio' ),
 			__( 'Signage Studio', 'merk-signage-studio' ),
 			'read',
 			'merk-signage-studio',
-			array( $this, 'render_studio_redirect' )
+			array( $this, 'render_studio_page' )
 		);
+		if ( current_user_can( 'manage_options' ) ) {
+			add_submenu_page(
+				'edit.php?post_type=page',
+				__( 'Signage Settings', 'merk-signage-studio' ),
+				__( 'Signage Settings', 'merk-signage-studio' ),
+				'manage_options',
+				'merk-signage-settings',
+				array( $this, 'render_settings_page' )
+			);
+		}
 	}
 
 	/**
-	 * Redirect the studio menu item to the isolated editor.
+	 * Show selected pages the current user is allowed to edit.
 	 */
-	public function render_studio_redirect() {
-		if ( ! current_user_can( 'edit_post', self::TEST_PAGE_ID ) ) {
-			wp_die( esc_html__( 'You cannot edit this signage.', 'merk-signage-studio' ) );
+	public function render_studio_page() {
+		if ( ! current_user_can( 'read' ) ) {
+			wp_die( esc_html__( 'You cannot access Signage Studio.', 'merk-signage-studio' ) );
 		}
+		$editable_pages = array();
+		foreach ( $this->get_managed_page_ids() as $page_id ) {
+			if ( current_user_can( 'edit_post', $page_id ) ) {
+				$editable_pages[] = get_post( $page_id );
+			}
+		}
+		?>
+		<div class="wrap">
+			<h1><?php esc_html_e( 'Signage Studio', 'merk-signage-studio' ); ?></h1>
+			<?php if ( empty( $editable_pages ) ) : ?>
+				<p><?php esc_html_e( 'No signage pages are assigned to your account.', 'merk-signage-studio' ); ?></p>
+			<?php else : ?>
+				<ul>
+					<?php foreach ( $editable_pages as $page ) : ?>
+						<?php if ( $page instanceof WP_Post ) : ?>
+							<li><a href="<?php echo esc_url( get_edit_post_link( $page->ID ) ); ?>"><?php echo esc_html( get_the_title( $page ) ); ?></a></li>
+						<?php endif; ?>
+					<?php endforeach; ?>
+				</ul>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
 
-		wp_safe_redirect( admin_url( 'post.php?post=' . self::TEST_PAGE_ID . '&action=edit' ) );
-		exit;
+	/**
+	 * Render administrator-only page selection settings.
+	 */
+	public function render_settings_page() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You cannot change Signage Studio settings.', 'merk-signage-studio' ) );
+		}
+		$selected_ids = $this->get_managed_page_ids();
+		$pages        = get_pages(
+			array(
+				'sort_column' => 'menu_order,post_title',
+				'post_status' => array( 'publish', 'draft', 'pending', 'private' ),
+			)
+		);
+		?>
+		<div class="wrap">
+			<h1><?php esc_html_e( 'Signage Settings', 'merk-signage-studio' ); ?></h1>
+			<p><?php esc_html_e( 'Choose which WordPress pages are managed as signage by this plugin. A user must still have permission to edit each selected page.', 'merk-signage-studio' ); ?></p>
+			<form action="options.php" method="post">
+				<?php settings_fields( 'merk_signage_studio_settings' ); ?>
+				<?php if ( ! empty( $pages ) ) : ?>
+					<fieldset>
+						<legend class="screen-reader-text"><?php esc_html_e( 'Pages managed as signage', 'merk-signage-studio' ); ?></legend>
+						<input type="hidden" name="<?php echo esc_attr( self::OPTION_KEY ); ?>[]" value="">
+						<?php foreach ( $pages as $page ) : ?>
+							<label style="display:block;margin:8px 0">
+								<input type="checkbox" name="<?php echo esc_attr( self::OPTION_KEY ); ?>[]" value="<?php echo esc_attr( $page->ID ); ?>" <?php checked( in_array( (int) $page->ID, $selected_ids, true ) ); ?>>
+								<?php echo esc_html( get_the_title( $page ) ); ?> <span class="description">(<?php echo esc_html( $page->post_status ); ?>)</span>
+							</label>
+						<?php endforeach; ?>
+					</fieldset>
+				<?php else : ?>
+					<p><?php esc_html_e( 'There are no eligible pages yet.', 'merk-signage-studio' ); ?></p>
+				<?php endif; ?>
+				<?php submit_button(); ?>
+			</form>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Add the signage body class so the full-screen theme styles apply to every selected page.
+	 *
+	 * @param string[] $classes Existing body classes.
+	 * @return string[]
+	 */
+	public function add_signage_body_class( $classes ) {
+		if ( is_page( $this->get_managed_page_ids() ) ) {
+			$classes[] = 'merk-signage-page';
+		}
+		return $classes;
 	}
 }
 

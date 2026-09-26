@@ -1,18 +1,18 @@
-body.page-id-82477 {
+body.merk-signage-page {
   margin: 0;
   overflow: hidden;
 }
 
-body.page-id-82477 #masthead,
-body.page-id-82477 #colophon,
-body.page-id-82477 .entry-header,
-body.page-id-82477 .entry-footer {
+body.merk-signage-page #masthead,
+body.merk-signage-page #colophon,
+body.merk-signage-page .entry-header,
+body.merk-signage-page .entry-footer {
   display: none;
 }
 
-body.page-id-82477 .site-main,
-body.page-id-82477 article,
-body.page-id-82477 .entry-content {
+body.merk-signage-page .site-main,
+body.merk-signage-page article,
+body.merk-signage-page .entry-content {
   margin: 0;
   max-width: none;
   padding: 0;
