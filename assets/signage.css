@@ -1,0 +1,128 @@
+body.page-id-82477 {
+  margin: 0;
+  overflow: hidden;
+}
+
+body.page-id-82477 #masthead,
+body.page-id-82477 #colophon,
+body.page-id-82477 .entry-header,
+body.page-id-82477 .entry-footer {
+  display: none;
+}
+
+body.page-id-82477 .site-main,
+body.page-id-82477 article,
+body.page-id-82477 .entry-content {
+  margin: 0;
+  max-width: none;
+  padding: 0;
+  width: 100%;
+}
+
+.merk-signage-frame {
+  align-items: center;
+  background: #000;
+  display: flex;
+  height: 100vh;
+  justify-content: center;
+  overflow: hidden;
+  width: 100vw;
+}
+
+.merk-signage-stage {
+  background-color: #000;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  height: 1080px;
+  left: 50%;
+  overflow: hidden;
+  position: relative;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(var(--scale, 1));
+  transform-origin: center center;
+  width: 1920px;
+}
+
+.merk-signage-layer {
+  box-sizing: border-box;
+  color: var(--color, #fff);
+  font-size: var(--font-size, 32px);
+  font-weight: var(--font-weight, 400);
+  left: var(--x, 0px);
+  line-height: 1.2;
+  margin: 0;
+  overflow-wrap: anywhere;
+  position: absolute;
+  text-align: var(--align, left);
+  top: var(--y, 0px);
+  white-space: pre-wrap;
+  width: var(--w, 300px);
+}
+
+.merk-signage-studio-metabox .merk-signage-layer-row {
+  background: #fff;
+  border: 1px solid #dcdcde;
+  border-radius: 4px;
+  margin: 12px 0;
+  padding: 12px;
+}
+
+.merk-signage-layout-preview {
+  margin: 16px 0;
+}
+
+.merk-signage-preview-viewport {
+  aspect-ratio: 16 / 9;
+  background-color: #252525;
+  background-image: linear-gradient(45deg, #333 25%, transparent 25%), linear-gradient(-45deg, #333 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #333 75%), linear-gradient(-45deg, transparent 75%, #333 75%);
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+  background-size: 20px 20px;
+  max-width: 960px;
+  overflow: hidden;
+  position: relative;
+}
+
+#merk-signage-canvas {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  height: 1080px;
+  left: 0;
+  position: absolute;
+  top: 0;
+  transform-origin: top left;
+  width: 1920px;
+}
+
+.merk-signage-preview-layer {
+  box-sizing: border-box;
+  cursor: move;
+  line-height: 1.2;
+  outline: 2px dashed rgba(32, 103, 189, 0.9);
+  padding: 2px;
+  position: absolute;
+  user-select: none;
+  white-space: pre-wrap;
+}
+
+.merk-signage-studio-metabox .merk-signage-layer-row legend {
+  font-weight: 600;
+}
+
+.merk-signage-studio-metabox .merk-signage-layer-row textarea {
+  min-height: 58px;
+  width: 100%;
+}
+
+.merk-signage-studio-metabox .merk-signage-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+}
+
+.merk-signage-studio-metabox .merk-signage-grid label {
+  display: grid;
+  font-weight: 600;
+  gap: 3px;
+}
