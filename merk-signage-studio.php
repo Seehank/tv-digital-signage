@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Merk Signage Studio
  * Description: Builder-free editor for selected digital-signage pages.
- * Version: 0.2.0
+ * Version: 0.3.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Seehank
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'MERK_SIGNAGE_STUDIO_FILE', __FILE__ );
 define( 'MERK_SIGNAGE_STUDIO_URL', plugin_dir_url( __FILE__ ) );
-define( 'MERK_SIGNAGE_STUDIO_VERSION', '0.2.0' );
+define( 'MERK_SIGNAGE_STUDIO_VERSION', '0.3.0' );
 
 final class Merk_Signage_Studio {
 	const TEST_PAGE_ID = 82477;
@@ -147,14 +147,29 @@ final class Merk_Signage_Studio {
 		$config = is_array( $config ) ? $config : array();
 		$layers = isset( $config['layers'] ) && is_array( $config['layers'] ) ? $config['layers'] : array();
 
+		$background_id = isset( $config['background_id'] ) ? absint( $config['background_id'] ) : 0;
+		$background_url = $this->get_background_url( $config );
+
 		wp_nonce_field( 'merk_signage_studio_save', 'merk_signage_studio_nonce' );
 		?>
 		<div class="merk-signage-studio-metabox">
 			<?php if ( $can_manage ) : ?>
-			<p>
-				<label for="merk-signage-background-url"><strong><?php esc_html_e( 'Background image URL', 'merk-signage-studio' ); ?></strong></label><br>
-				<input class="widefat" id="merk-signage-background-url" name="merk_signage[background_url]" type="url" value="<?php echo esc_attr( isset( $config['background_url'] ) ? $config['background_url'] : '' ); ?>" placeholder="https://…">
-			</p>
+			<div>
+				<strong><?php esc_html_e( 'Background image', 'merk-signage-studio' ); ?></strong>
+				<input type="hidden" name="merk_signage[background_id]" id="merk-signage-background-id" value="<?php echo esc_attr( $background_id ); ?>">
+				<input type="hidden" name="merk_signage[background_removed]" id="merk-signage-background-removed" value="0">
+				<div class="merk-signage-background-preview" id="merk-signage-background-preview" style="margin-top: 10px; max-width: 300px;">
+					<?php if ( $background_url ) : ?>
+						<img src="<?php echo esc_url( $background_url ); ?>" alt="<?php esc_attr_e( 'Background preview', 'merk-signage-studio' ); ?>" style="max-width: 100%; height: auto; border: 1px solid #ccc;">
+					<?php else : ?>
+						<span class="description"><?php esc_html_e( 'No background selected.', 'merk-signage-studio' ); ?></span>
+					<?php endif; ?>
+				</div>
+				<p style="margin-top: 10px;">
+					<button type="button" class="button" id="merk-signage-select-background"><?php esc_html_e( 'Select Background', 'merk-signage-studio' ); ?></button>
+					<button type="button" class="button" id="merk-signage-remove-background"><?php esc_html_e( 'Remove Background', 'merk-signage-studio' ); ?></button>
+				</p>
+			</div>
 			<p class="description"><?php esc_html_e( 'Coordinates use the fixed 1920 × 1080 design canvas. Manage which pages use this editor in Signage Settings.', 'merk-signage-studio' ); ?></p>
 			<div class="merk-signage-layout-preview">
 				<h3><?php esc_html_e( 'Visual layout', 'merk-signage-studio' ); ?></h3>
@@ -166,7 +181,7 @@ final class Merk_Signage_Studio {
 			<?php endif; ?>
 			<div id="merk-signage-layers" data-next-index="<?php echo esc_attr( count( $layers ) ); ?>">
 				<?php foreach ( $layers as $index => $layer ) : ?>
-					<?php $this->render_layer_row( (int) $index, $layer ); ?>
+					<?php $this->render_layer_row( (int) $index, $layer, $post->ID ); ?>
 				<?php endforeach; ?>
 			</div>
 			<?php if ( $can_manage ) : ?>
@@ -175,14 +190,13 @@ final class Merk_Signage_Studio {
 		</div>
 		<?php
 	}
-
 	/**
 	 * Render one editable text-layer row.
 	 *
 	 * @param int   $index Row index.
 	 * @param array $layer Layer values.
 	 */
-	private function render_layer_row( $index, $layer ) {
+	private function render_layer_row( $index, $layer, $post_id = 0 ) {
 		$layer = wp_parse_args(
 			is_array( $layer ) ? $layer : array(),
 			array(
@@ -195,24 +209,64 @@ final class Merk_Signage_Studio {
 				'color'       => '#ffffff',
 				'font_weight' => 400,
 				'align'       => 'left',
+				'source'      => 'static',
+				'acf_key'     => '',
 			)
 		);
+
+		if ( ! in_array( $layer['source'], array( 'static', 'acf' ), true ) ) {
+			$layer['source'] = 'static';
+		}
+
 		$name = 'merk_signage[layers][' . $index . ']';
-		if ( ! current_user_can( 'manage_options' ) ) {
+		$can_manage = current_user_can( 'manage_options' );
+
+		if ( ! $can_manage ) {
 			?>
 			<div class="merk-operator-layer">
 				<label><strong><?php echo esc_html( $layer['label'] ); ?></strong><br>
+				<?php if ( 'acf' === $layer['source'] ) : ?>
+					<span class="merk-operator-layer-text"><?php echo esc_html( $this->get_layer_text( $layer, $post_id ) ); ?></span>
+					<input type="hidden" name="<?php echo esc_attr( $name ); ?>[text]" value="<?php echo esc_attr( $layer['text'] ); ?>">
+				<?php else : ?>
 					<textarea class="widefat" name="<?php echo esc_attr( $name ); ?>[text]" rows="3"><?php echo esc_textarea( $layer['text'] ); ?></textarea>
+				<?php endif; ?>
 				</label>
 			</div>
 			<?php
 			return;
 		}
+
+		$acf_fields = $this->get_acf_fields( $post_id );
 		?>
 		<fieldset class="merk-signage-layer-row" data-layer-key="<?php echo esc_attr( $index ); ?>">
 			<legend><?php esc_html_e( 'Text layer', 'merk-signage-studio' ); ?></legend>
 			<p><label><?php esc_html_e( 'Label', 'merk-signage-studio' ); ?><br><input name="<?php echo esc_attr( $name ); ?>[label]" type="text" value="<?php echo esc_attr( $layer['label'] ); ?>"></label></p>
-			<p><label><?php esc_html_e( 'Text', 'merk-signage-studio' ); ?><br><textarea name="<?php echo esc_attr( $name ); ?>[text]" rows="3"><?php echo esc_textarea( $layer['text'] ); ?></textarea></label></p>
+
+			<p class="merk-signage-source-row">
+				<label><?php esc_html_e( 'Source', 'merk-signage-studio' ); ?>
+					<select name="<?php echo esc_attr( $name ); ?>[source]" class="merk-signage-source-select">
+						<option value="static" <?php selected( $layer['source'], 'static' ); ?>><?php esc_html_e( 'Static Text', 'merk-signage-studio' ); ?></option>
+						<option value="acf" <?php selected( $layer['source'], 'acf' ); ?>><?php esc_html_e( 'ACF Field', 'merk-signage-studio' ); ?></option>
+					</select>
+				</label>
+			</p>
+
+			<p class="merk-signage-static-text" <?php echo 'static' === $layer['source'] ? '' : 'style="display:none;"'; ?>>
+				<label><?php esc_html_e( 'Text', 'merk-signage-studio' ); ?><br><textarea name="<?php echo esc_attr( $name ); ?>[text]" rows="3"><?php echo esc_textarea( $layer['text'] ); ?></textarea></label>
+			</p>
+
+			<p class="merk-signage-acf-select" <?php echo 'acf' === $layer['source'] ? '' : 'style="display:none;"'; ?>>
+				<label><?php esc_html_e( 'ACF Field', 'merk-signage-studio' ); ?>
+					<select name="<?php echo esc_attr( $name ); ?>[acf_key]" class="merk-signage-acf-field-select">
+						<option value=""><?php esc_html_e( 'Select Field', 'merk-signage-studio' ); ?></option>
+						<?php foreach ( $acf_fields as $field_key => $field_label ) : ?>
+							<option value="<?php echo esc_attr( $field_key ); ?>" <?php selected( $layer['acf_key'], $field_key ); ?>><?php echo esc_html( $field_label ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</label>
+			</p>
+
 			<p class="merk-signage-grid">
 				<label><?php esc_html_e( 'X', 'merk-signage-studio' ); ?><input name="<?php echo esc_attr( $name ); ?>[x]" type="number" min="0" max="1920" value="<?php echo esc_attr( $layer['x'] ); ?>"></label>
 				<label><?php esc_html_e( 'Y', 'merk-signage-studio' ); ?><input name="<?php echo esc_attr( $name ); ?>[y]" type="number" min="0" max="1080" value="<?php echo esc_attr( $layer['y'] ); ?>"></label>
@@ -226,7 +280,6 @@ final class Merk_Signage_Studio {
 		</fieldset>
 		<?php
 	}
-
 	/**
 	 * Render select options.
 	 *
@@ -267,10 +320,12 @@ final class Merk_Signage_Studio {
 		}
 		$raw_config = wp_unslash( $_POST['merk_signage'] );
 		if ( current_user_can( 'manage_options' ) ) {
-			if ( ! $this->valid_config_input( $raw_config ) ) {
+			if ( ! $this->valid_config_input( $raw_config, $post_id ) ) {
 				return;
 			}
-			update_post_meta( $post_id, self::META_KEY, $this->sanitize_config( $raw_config ) );
+			$existing = get_post_meta( $post_id, self::META_KEY, true );
+			$existing = is_array( $existing ) ? $existing : array();
+			update_post_meta( $post_id, self::META_KEY, $this->sanitize_config( $raw_config, $existing, $post_id ) );
 			return;
 		}
 		$existing = get_post_meta( $post_id, self::META_KEY, true );
@@ -299,19 +354,27 @@ final class Merk_Signage_Studio {
 			if ( ! isset( $submitted_layer['text'] ) || ! is_string( $submitted_layer['text'] ) || strlen( $submitted_layer['text'] ) > 8000 ) {
 				return;
 			}
-			$updated_existing['layers'][ $index ]['text'] = sanitize_textarea_field( $submitted_layer['text'] );
+			$layer_source = isset( $layer['source'] ) && is_string( $layer['source'] ) ? $layer['source'] : 'static';
+			if ( 'static' === $layer_source ) {
+				$updated_existing['layers'][ $index ]['text'] = sanitize_textarea_field( $submitted_layer['text'] );
+			}
 		}
 		update_post_meta( $post_id, self::META_KEY, $updated_existing );
 	}
-
 	/**
 	 * Validate the complete admin form before calling scalar sanitizers.
 	 *
 	 * @param mixed $raw Submitted configuration.
 	 * @return bool
 	 */
-	private function valid_config_input( $raw ) {
-		if ( ! is_array( $raw ) || ! isset( $raw['background_url'] ) || ! is_string( $raw['background_url'] ) || strlen( $raw['background_url'] ) > 2048 ) {
+	private function valid_config_input( $raw, $post_id = 0 ) {
+		if ( ! is_array( $raw ) ) {
+			return false;
+		}
+		if ( ! isset( $raw['background_id'] ) || ! is_scalar( $raw['background_id'] ) ) {
+			return false;
+		}
+		if ( ! isset( $raw['background_removed'] ) || ! is_scalar( $raw['background_removed'] ) ) {
 			return false;
 		}
 		if ( ! isset( $raw['layers'] ) || ! is_array( $raw['layers'] ) || count( $raw['layers'] ) > 100 ) {
@@ -319,6 +382,7 @@ final class Merk_Signage_Studio {
 		}
 		$string_fields  = array( 'label', 'text', 'color', 'align' );
 		$numeric_fields = array( 'x', 'y', 'width', 'font_size', 'font_weight' );
+		$eligible_acf_keys = $this->get_acf_fields( $post_id );
 		foreach ( $raw['layers'] as $layer ) {
 			if ( ! is_array( $layer ) ) {
 				return false;
@@ -333,31 +397,102 @@ final class Merk_Signage_Studio {
 					return false;
 				}
 			}
+			$source = isset( $layer['source'] ) && is_string( $layer['source'] ) ? $layer['source'] : 'static';
+			$acf_key = isset( $layer['acf_key'] ) && is_string( $layer['acf_key'] ) ? $layer['acf_key'] : '';
+			if ( 'static' !== $source && 'acf' !== $source ) {
+				return false;
+			}
+			if ( 'acf' === $source ) {
+				if ( '' === $acf_key || ! array_key_exists( $acf_key, $eligible_acf_keys ) ) {
+					return false;
+				}
+			}
 		}
 		return true;
 	}
-
 	/**
 	 * Sanitize stored configuration.
 	 *
 	 * @param array $raw Raw form data.
 	 * @return array
 	 */
-	private function sanitize_config( $raw ) {
+	private function sanitize_config( $raw, $existing = array(), $post_id = 0 ) {
+		$existing = is_array( $existing ) ? $existing : array();
+
+		$background_id = isset( $raw['background_id'] ) ? absint( $raw['background_id'] ) : 0;
+		$background_removed = isset( $raw['background_removed'] ) ? absint( $raw['background_removed'] ) : 0;
+
+		$final_background_id = 0;
+		$final_background_url = '';
+
+		if ( $background_removed ) {
+			$final_background_id = 0;
+			$final_background_url = '';
+		} elseif ( $background_id > 0 ) {
+			$attachment = get_post( $background_id );
+			if ( $attachment && wp_attachment_is_image( $background_id ) ) {
+				$url = wp_get_attachment_image_url( $background_id, 'full' );
+				if ( $url ) {
+					$final_background_id = $background_id;
+					$final_background_url = esc_url_raw( $url );
+				}
+			}
+		}
+
+		if ( ! $background_removed && ! $final_background_id && ! $final_background_url ) {
+			if ( isset( $existing['background_id'] ) && absint( $existing['background_id'] ) > 0 ) {
+				$existing_id = absint( $existing['background_id'] );
+				$attachment = get_post( $existing_id );
+				if ( $attachment && wp_attachment_is_image( $existing_id ) ) {
+					$url = wp_get_attachment_image_url( $existing_id, 'full' );
+					if ( $url ) {
+						$final_background_id = $existing_id;
+						$final_background_url = esc_url_raw( $url );
+					}
+				}
+			}
+			if ( ! $final_background_id && ! $final_background_url && isset( $existing['background_url'] ) && is_string( $existing['background_url'] ) ) {
+				$legacy_url = esc_url_raw( $existing['background_url'] );
+				if ( $legacy_url ) {
+					$final_background_url = $legacy_url;
+				}
+			}
+		}
+
 		$config = array(
-			'background_url' => esc_url_raw( isset( $raw['background_url'] ) ? $raw['background_url'] : '' ),
+			'background_id'  => $final_background_id,
+			'background_url' => $final_background_url,
 			'layers'         => array(),
 		);
+
 		$layers = isset( $raw['layers'] ) && is_array( $raw['layers'] ) ? $raw['layers'] : array();
+		$eligible_acf_keys = $this->get_acf_fields( $post_id );
 
 		foreach ( $layers as $layer ) {
 			if ( ! is_array( $layer ) ) {
 				continue;
 			}
 
+			$source = isset( $layer['source'] ) && is_string( $layer['source'] ) ? $layer['source'] : 'static';
+			if ( 'acf' !== $source ) {
+				$source = 'static';
+			}
+
+			$acf_key = '';
+			if ( 'acf' === $source ) {
+				$raw_key = isset( $layer['acf_key'] ) && is_string( $layer['acf_key'] ) ? $layer['acf_key'] : '';
+				if ( array_key_exists( $raw_key, $eligible_acf_keys ) ) {
+					$acf_key = $raw_key;
+				} else {
+					$source = 'static';
+					$acf_key = '';
+				}
+			}
+
 			$label = sanitize_text_field( isset( $layer['label'] ) ? $layer['label'] : '' );
 			$text  = sanitize_textarea_field( isset( $layer['text'] ) ? $layer['text'] : '' );
-			if ( '' === $label && '' === $text ) {
+
+			if ( 'static' === $source && '' === $label && '' === $text ) {
 				continue;
 			}
 
@@ -375,12 +510,107 @@ final class Merk_Signage_Studio {
 				'color'       => $color ? $color : '#ffffff',
 				'font_weight' => in_array( $weight, array( 400, 500, 600, 700, 800 ), true ) ? $weight : 400,
 				'align'       => in_array( $align, array( 'left', 'center', 'right' ), true ) ? $align : 'left',
+				'source'      => $source,
+				'acf_key'     => $acf_key,
 			);
 		}
 
 		return $config;
 	}
 
+private function get_acf_fields( $post_id ) {
+    if ( ! function_exists( 'get_field_objects' ) ) {
+        return array();
+    }
+
+    $fields = get_field_objects( $post_id );
+
+    if ( ! is_array( $fields ) ) {
+        return array();
+    }
+
+    $result = array();
+
+    foreach ( $fields as $field ) {
+        if ( ! is_array( $field ) ) {
+            continue;
+        }
+
+        if ( ! isset( $field['key'] ) || ! is_string( $field['key'] ) || '' === $field['key'] ) {
+            continue;
+        }
+
+        if ( ! isset( $field['value'] ) ) {
+            continue;
+        }
+
+        $value = $field['value'];
+
+        if ( ! is_string( $value ) && ! is_numeric( $value ) ) {
+            continue;
+        }
+
+        $label = '';
+        if ( isset( $field['label'] ) && is_string( $field['label'] ) && '' !== $field['label'] ) {
+            $label = $field['label'];
+        } elseif ( isset( $field['name'] ) && is_string( $field['name'] ) && '' !== $field['name'] ) {
+            $label = $field['name'];
+        } else {
+            $label = $field['key'];
+        }
+
+        $result[ $field['key'] ] = $label;
+    }
+
+    return $result;
+}
+
+	public function get_layer_text( $layer, $post_id ) {
+		if ( ! is_array( $layer ) ) {
+			return '';
+		}
+		$source = isset( $layer['source'] ) && is_string( $layer['source'] ) ? $layer['source'] : 'static';
+		if ( 'acf' === $source ) {
+			$acf_key = isset( $layer['acf_key'] ) && is_string( $layer['acf_key'] ) ? $layer['acf_key'] : '';
+			if ( '' !== $acf_key && function_exists( 'get_field' ) ) {
+				$value = get_field( $acf_key, $post_id );
+				if ( is_string( $value ) || is_numeric( $value ) ) {
+					return (string) $value;
+				}
+			}
+			return '';
+		}
+		return isset( $layer['text'] ) && is_string( $layer['text'] ) ? $layer['text'] : '';
+	}
+
+	public function get_background_url( $config ) {
+		$config = is_array( $config ) ? $config : array();
+
+		if ( isset( $config['background_id'] ) && absint( $config['background_id'] ) > 0 ) {
+			$id = absint( $config['background_id'] );
+			$attachment = get_post( $id );
+			if ( $attachment && wp_attachment_is_image( $attachment ) ) {
+				$url = wp_get_attachment_image_url( $id, 'full' );
+				if ( $url ) {
+					return $url;
+				}
+			}
+		}
+
+		if ( isset( $config['background_url'] ) && is_string( $config['background_url'] ) ) {
+			$url = esc_url_raw( $config['background_url'] );
+			if ( $url ) {
+				return $url;
+			}
+		}
+
+		return '';
+	}
+	/**
+	 * Load editor assets only when editing a selected signage page.
+	 *
+	 * @param string $hook_suffix Admin page hook.
+	 */
 	/**
 	 * Load editor assets only when editing a selected signage page.
 	 *
@@ -399,27 +629,38 @@ final class Merk_Signage_Studio {
 			return;
 		}
 
-		wp_enqueue_script( 'merk-signage-studio-admin', MERK_SIGNAGE_STUDIO_URL . 'assets/admin.js', array(), MERK_SIGNAGE_STUDIO_VERSION, true );
+		wp_enqueue_media();
+		wp_enqueue_script( 'merk-signage-studio-admin', MERK_SIGNAGE_STUDIO_URL . 'assets/admin.js', array( 'wp-media' ), MERK_SIGNAGE_STUDIO_VERSION, true );
+
+		$config = get_post_meta( $page_id, self::META_KEY, true );
+		$config = is_array( $config ) ? $config : array();
+		$background_id = isset( $config['background_id'] ) ? absint( $config['background_id'] ) : 0;
+		$background_url = $this->get_background_url( $config );
+
 		wp_localize_script(
 			'merk-signage-studio-admin',
 			'MerkSignageStudio',
 			array(
-				'rowTemplate' => $this->get_layer_template(),
+				'rowTemplate'    => $this->get_layer_template( $page_id ),
+				'backgroundId'   => $background_id,
+				'backgroundUrl'  => $background_url,
+				'labels'         => array(
+					'selectBackground' => __( 'Select Background', 'merk-signage-studio' ),
+					'removeBackground' => __( 'Remove Background', 'merk-signage-studio' ),
+				)
 			)
 		);
 	}
-
 	/**
 	 * Get a clean HTML template for a new repeatable row.
 	 *
 	 * @return string
 	 */
-	private function get_layer_template() {
-		ob_start();
-		$this->render_layer_row( '__INDEX__', array() );
-		return (string) ob_get_clean();
-	}
-
+private function get_layer_template( $post_id ) {
+    ob_start();
+    $this->render_layer_row( '__INDEX__', array(), $post_id );
+    return ob_get_clean();
+}
 	/**
 	 * Load front-end styles only on selected signage pages.
 	 */
@@ -435,6 +676,12 @@ final class Merk_Signage_Studio {
 	 * @param string $content Original content.
 	 * @return string
 	 */
+	/**
+	 * Replace Brizy output only on pages selected for the plugin.
+	 *
+	 * @param string $content Original content.
+	 * @return string
+	 */
 	public function render_signage( $content ) {
 		$page_id = get_queried_object_id();
 		if ( ! $this->is_managed_page( $page_id ) || ! is_main_query() || ! in_the_loop() ) {
@@ -443,7 +690,7 @@ final class Merk_Signage_Studio {
 
 		$config = get_post_meta( $page_id, self::META_KEY, true );
 		$config = is_array( $config ) ? $config : array();
-		$background_url = isset( $config['background_url'] ) ? esc_url( $config['background_url'] ) : '';
+		$background_url = $this->get_background_url( $config );
 		$layers         = isset( $config['layers'] ) && is_array( $config['layers'] ) ? $config['layers'] : array();
 
 		// A page keeps rendering its original content until its signage layout is configured.
@@ -458,6 +705,7 @@ final class Merk_Signage_Studio {
 		<div class="merk-signage-frame"><div class="merk-signage-stage"<?php echo $stage_style ? ' style="' . esc_attr( $stage_style ) . '"' : ''; ?>>
 			<?php foreach ( $layers as $layer ) : ?>
 				<?php
+				$layer_text = $this->get_layer_text( $layer, $page_id );
 				$style = sprintf(
 					'--x:%1$dpx;--y:%2$dpx;--w:%3$dpx;--font-size:%4$dpx;--color:%5$s;--font-weight:%6$d;--align:%7$s;',
 					(int) $layer['x'],
@@ -469,7 +717,7 @@ final class Merk_Signage_Studio {
 					esc_attr( $layer['align'] )
 				);
 				?>
-				<div class="merk-signage-layer" style="<?php echo esc_attr( $style ); ?>"><?php echo esc_html( $layer['text'] ); ?></div>
+				<div class="merk-signage-layer" style="<?php echo esc_attr( $style ); ?>"><?php echo esc_html( $layer_text ); ?></div>
 			<?php endforeach; ?>
 		</div></div>
 		<script>
@@ -487,7 +735,6 @@ final class Merk_Signage_Studio {
 
 		return (string) ob_get_clean();
 	}
-
 	/**
 	 * Add studio and settings entry points for the appropriate users.
 	 */
