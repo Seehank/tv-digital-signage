@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Merk Signage Studio
  * Description: Builder-free editor for selected digital-signage pages.
- * Version: 0.3.0
+ * Version: 0.3.1
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Seehank
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'MERK_SIGNAGE_STUDIO_FILE', __FILE__ );
 define( 'MERK_SIGNAGE_STUDIO_URL', plugin_dir_url( __FILE__ ) );
-define( 'MERK_SIGNAGE_STUDIO_VERSION', '0.3.0' );
+define( 'MERK_SIGNAGE_STUDIO_VERSION', '0.3.1' );
 
 final class Merk_Signage_Studio {
 	const TEST_PAGE_ID = 82477;
@@ -630,7 +630,7 @@ private function get_acf_fields( $post_id ) {
 		}
 
 		wp_enqueue_media();
-		wp_enqueue_script( 'merk-signage-studio-admin', MERK_SIGNAGE_STUDIO_URL . 'assets/admin.js', array( 'wp-media' ), MERK_SIGNAGE_STUDIO_VERSION, true );
+		wp_enqueue_script( 'merk-signage-studio-admin', MERK_SIGNAGE_STUDIO_URL . 'assets/admin.js', array( 'media-editor' ), MERK_SIGNAGE_STUDIO_VERSION, true );
 
 		$config = get_post_meta( $page_id, self::META_KEY, true );
 		$config = is_array( $config ) ? $config : array();
