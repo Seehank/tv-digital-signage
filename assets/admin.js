@@ -215,11 +215,12 @@ document.addEventListener('DOMContentLoaded', function () {
     event.preventDefault();
     var wrapper = document.createElement('div');
     wrapper.innerHTML = window.MerkSignageStudio.rowTemplate.replace(/__INDEX__/g, String(nextIndex));
+    var row = wrapper.firstElementChild;
 
-    if (wrapper.firstElementChild) {
-      layers.appendChild(wrapper.firstElementChild);
+    if (row) {
+      layers.appendChild(row);
       nextIndex += 1;
-      setupRowListeners(wrapper.firstElementChild);
+      setupRowListeners(row);
       refreshPreview();
     }
   });
