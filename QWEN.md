@@ -1,109 +1,96 @@
 # Qwen collaboration playbook
 
-This file preserves the working agreement and practical lessons for future sessions on this project. It contains no credentials, API tokens, customer data, or production-only configuration.
+Reusable working agreement for collaboration with the local Qwen model. Keep this document project-neutral: no customer data, credentials, application-specific field names, host names, or implementation details belong here.
 
-## Roles and ownership
+## Responsibilities
 
-- **Qwen writes implementation code.** This is the user's explicit preference.
-- **Codex scopes tasks, gives Qwen precise source context, reviews output, integrates it mechanically, runs checks, builds the ZIP, and maintains GitHub.**
-- Do not silently replace Qwen with Codex-authored implementation just because a task looks small. If Qwen's output is unsafe or incomplete, explain the defect internally and send Qwen a narrower correction request.
-- Do not deploy to the WordPress site unless the user explicitly asks. Keep the current built `merk-signage-studio.zip` in this repository root for manual FTP upload.
+- **Qwen writes implementation code.**
+- **Codex prepares a precise task, supplies the relevant current source, reviews Qwen's output, integrates reviewed changes, verifies them, and manages repository hygiene.**
+- Do not quietly replace Qwen with Codex-authored implementation because a change looks small. If Qwen's result is incomplete or unsafe, send Qwen a narrower correction task.
+- The user decides whether and when changes are deployed to an external system.
 
-## Local Qwen setup used here
+## Runtime baseline
 
-- Model: `hf.co/ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF:IQ3_S` through local Ollama.
-- The user chose a 16k context. Match it with `num_ctx: 16384` and disable thinking for deterministic code tasks.
-- Long answers are slower and less reliable. Prefer a narrowly bounded method-level request over a full-plugin rewrite.
+- Qwen is configured for a **16k context window**. Design every request to fit that limit comfortably.
+- Use `num_ctx: 16384` when calling the local API, so the request matches the user's configured limit.
+- Disable reasoning/thinking for deterministic coding tasks unless the user asks for exploratory reasoning.
+- Prefer a short request with a focused source excerpt. Long whole-project prompts make the result slower and less consistent.
 
-## Prompt shape that works best
+## How to write a good Qwen task
 
-1. State the observed fact, not a guess. Example: “The PHP metabox renders, but the browser has no `admin.js` tag and `MerkSignageStudio` is undefined.”
-2. Give Qwen the exact current method or file as `SOURCE`.
-3. Say what must remain unchanged, then list the smallest allowed edits.
-4. Require a machine-readable response, for example:
+1. Start with an observed fact, not an assumption.
+
+   Example: “The UI renders, but the browser has no script tag for the editor JavaScript.”
+
+2. Include only the current method, component, or file that must change.
+3. Explicitly name what must remain unchanged.
+4. Describe the smallest permitted change and its expected behavior.
+5. Require a machine-readable response with exact markers and no commentary.
 
    ```text
-   Return only the complete replacement method in:
-   <<<METHOD:enqueue_admin_assets>>>
+   Return only the complete replacement method:
+   <<<METHOD:method_name>>>
    ...
    <<<END METHOD>>>
-   No PHP tags and no explanation.
+
+   Include the full function declaration. No PHP tags, no prose.
    ```
 
-5. Require the full function declaration, not only a method body.
-6. Review the response before touching project files. Validate it with PHP lint, JavaScript syntax check, and `git diff --check` after integration.
+6. State invariants explicitly: authorization, validation, backward compatibility, output escaping, tests, performance limits, or public API stability as applicable.
 
-## Patterns proven during this project
+## Granularity rules
 
-### Good: targeted source-preserving revision
+- Prefer **one method or one small file per request**.
+- If the task spans several methods, do them in dependency order and validate after each integration.
+- For a complex feature, ask Qwen first for a concise implementation plan or data model, then request the individual implementation blocks.
+- Never ask Qwen for a broad rewrite when a targeted revision will do.
 
-Qwen produced a correct WordPress fix after receiving the exact `enqueue_admin_assets()` source and this constrained request:
+## What works well
 
-> Keep all checks and localization unchanged. Keep `wp_enqueue_media()`. Replace the unregistered `wp-media` dependency with WordPress core's `media-editor` handle.
+- “Copy this exact source unchanged except for these three edits.”
+- Giving Qwen a small real source excerpt rather than describing the code from memory.
+- Clear input/output contracts and fixed names that must be preserved.
+- Exact response markers, full declarations, and a ban on explanatory text.
+- Feeding back a specific review finding with the offending source excerpt and asking for only that correction.
 
-This solved the real production symptom: WordPress omitted the whole dependent admin script, so neither **Select Background** nor **Add text layer** worked.
+## What does not work well
 
-### Good: one method at a time for ACF work
+- Broad prompts such as “implement the whole feature coherently.” They encourage invented architecture, unrelated data models, and inconsistent naming.
+- Large multi-method responses. They often mix conventions between the generated pieces.
+- Vague requests such as “make it secure” without the actual threat model or current source.
+- Accepting a response before checking that it is complete code rather than a fragment, prose, or a partial replacement.
+- Asking Qwen to infer hidden project conventions that were not included in the prompt.
 
-For ACF binding, Qwen was reliable when asked to alter one existing method at a time and to preserve the established data model:
+## Review and integration gate
 
-- `source`: `static` or `acf`
-- `acf_key`: the actual ACF field key
-- legacy `text`: remains static-layer text
+Before modifying the project, check that Qwen's response:
 
-The prompt must explicitly say that the plugin uses **existing ACF fields only** and must never create, register, or modify ACF field groups.
+- contains the requested marker block and complete declaration;
+- preserves the required identifiers and public behavior;
+- does not add unrelated configuration, dependencies, network calls, telemetry, or secrets;
+- validates untrusted input and respects authorization boundaries;
+- escapes or safely renders dynamic output;
+- has no dangling comments, opening tags, placeholder code, or prose embedded in source.
 
-### Good: exact safety invariants in the prompt
+After integration, run the checks appropriate to the stack. At minimum:
 
-State security rules as non-negotiable constraints:
+- language syntax/lint checks;
+- formatter or whitespace/diff validation;
+- relevant tests or a focused reproduction;
+- a browser or UI verification when the change affects user interaction.
 
-- use the current WordPress nonce and `edit_post` capability checks;
-- only `manage_options` may alter layout, background, or bindings;
-- an operator may alter only static text;
-- validate ACF keys against the current page's eligible ACF field list;
-- output dynamic values with `esc_html` and preview text with `textContent`.
+## Debugging loop
 
-### Needs explicit attention: mixed static and ACF layers
+1. Reproduce the issue without changing data.
+2. Gather one authoritative observation: console error, missing asset, failing test, HTTP response, or visible state.
+3. Isolate the smallest responsible source area.
+4. Give Qwen the evidence and that exact source area.
+5. Review and verify the narrow patch.
+6. Only then broaden the investigation if the symptom remains.
 
-When non-admin operators edit a page containing both layer types, their submitted form must retain sequential layer indexes. ACF layers should be read-only, but must still submit a harmless hidden `text` field so server-side validation can preserve the whole configuration. The server must ignore that field for `source: acf`.
+## Persistence and hygiene
 
-## Patterns that did not work
-
-### Avoid broad redesign prompts
-
-Requests such as “implement coherent media library and ACF binding for the whole plugin” led Qwen to invent unrelated meta keys, HTML structures, and field names. It sometimes returned fragments instead of method definitions.
-
-### Avoid asking for many methods in one response
-
-Large multi-method answers mixed incompatible conventions, for example `acf_field` in the editor versus `acf_key` in the saving code. Split work into small, source-backed revisions.
-
-### Do not accept prose or partial code as a patch
-
-Qwen can accidentally include a dangling PHPDoc opener, opening PHP tags, commentary, or only a function body. Extract only the requested marker block, confirm that it contains the intended declaration and matching braces, then lint before integration.
-
-### Do not let Qwen replace the architecture
-
-Keep these project identifiers unless the user asks for a migration:
-
-- meta key: `_merk_signage_studio`
-- page option: `merk_signage_studio_pages`
-- static layer field: `text`
-- ACF binding field: `acf_key`
-
-## Standard implementation loop
-
-1. Reproduce and observe the problem on the test page without saving data.
-2. Inspect the smallest relevant local source area.
-3. Give Qwen a source-preserving method/file task with exact markers.
-4. Review for authorization, validation, output escaping, backward compatibility, and data-model consistency.
-5. Integrate only the reviewed Qwen block.
-6. Run PHP lint, `node --check` where relevant, and `git diff --check`.
-7. Update the plugin version for a browser-cache-visible asset change, rebuild the root ZIP, sync the mirror folder, commit, and push GitHub.
-8. Ask the user to upload via FTP, then validate the installed behavior in WordPress.
-
-## Current project-specific checks
-
-- The studio box rendering alone does **not** prove the JavaScript loaded. Check that an `admin.js` script tag exists and `window.MerkSignageStudio` is defined.
-- Before a background is configured, the public signage page intentionally keeps rendering its original Brizy content. This is a safety fallback, not a plugin failure.
-- When a page has an active WordPress post lock, do not take it over without the user's clear instruction.
-- Never place WordPress credentials, FTP credentials, license keys, or private site data in this file or in GitHub.
+- Update this document only when a lesson is reusable across projects or sessions.
+- Keep secrets, personal data, access tokens, passwords, client names, URLs, and production identifiers out of it.
+- Record principles and prompt patterns, not transient implementation details.
+- When a project has its own conventions, keep them in that project's README or dedicated project documentation rather than here.
