@@ -55,11 +55,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     if (backgroundSelectBtn && backgroundRemoveBtn) {
-      if (currentId) {
-        backgroundSelectBtn.style.display = 'none';
+      backgroundSelectBtn.style.display = 'inline-block';
+
+      if (currentId || currentUrl) {
         backgroundRemoveBtn.style.display = 'inline-block';
       } else {
-        backgroundSelectBtn.style.display = 'inline-block';
         backgroundRemoveBtn.style.display = 'none';
       }
     }
